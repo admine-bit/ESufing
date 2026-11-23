@@ -19,6 +19,8 @@ class Config:
     timeout: float = 8
     mode: str = "keepalive"
     interval: float = 30
+    usb_interface: str = ""
+    pcie_interface: str = ""
 
 
 def load_config(path=CONFIG_FILE, profile=None):
@@ -42,6 +44,8 @@ def load_config(path=CONFIG_FILE, profile=None):
         timeout=parser.getfloat("network", "timeout", fallback=8),
         mode=parser.get("runtime", "mode", fallback="keepalive").strip(),
         interval=parser.getfloat("runtime", "interval", fallback=30),
+        usb_interface=parser.get("usb", "interface", fallback="").strip(),
+        pcie_interface=parser.get("pcie", "interface", fallback="").strip(),
     )
     if not config.username or not config.password:
         raise ValueError("请在 config.ini 的 [account] 中填写 username 和 password")
@@ -49,4 +53,6 @@ def load_config(path=CONFIG_FILE, profile=None):
         raise ValueError("[runtime] mode 只支持 login 或 keepalive")
     if config.timeout <= 0 or config.interval < 1:
         raise ValueError("timeout 必须大于 0，interval 必须至少为 1 秒")
+    if config.usb_interface and config.usb_interface == config.pcie_interface:
+        raise ValueError("[usb] 和 [pcie] 必须配置不同的网卡")
     return config

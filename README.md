@@ -24,7 +24,11 @@ cd /home/ad/ESurfingPy-CLI
 ```
 
 `start.sh` 则使用 `[network]` 的默认接口。两个入口共用账号配置，
-按网卡分别保存 NetworkManager 连接及认证会话，也可同时运行。
+按网卡分别保存 NetworkManager 连接及认证会话。
+启动 PCIe 入口会停止本项目已有的 USB 校园网保活，并断开 USB 上的 `ssid` 校园网连接。
+USB 若连接手机热点或其他 Wi-Fi，则保持其连接、自动连接设置及保存的网络配置。
+PCIe 保活期间会阻止另一个 USB 校园网脚本启动，并定期检查 USB 是否重新连上同一校园网。
+需要切回 USB 校园网时，先停止 PCIe 入口，再运行 `start-usb.sh`。
 
 配置集中在项目根目录 `config.ini` 的 `[account]`、`[network]`、`[usb]`、`[pcie]` 和 `[runtime]`，
 每个可修改参数都有中文注释。更换账号、密码或网卡时只需编辑此文件。

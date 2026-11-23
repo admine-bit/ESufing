@@ -13,11 +13,38 @@ from . import log
 from .cdc import CAPTIVE_URL, USER_AGENT, CDCClient, portal_config
 from .config import load_config
 from .http import create_session
+from .processes import coordinate_clients
 
 
 def nmcli(*args, check=True):
     return subprocess.run(["nmcli", *args], capture_output=True, text=True,
                           check=check, timeout=45)
+
+
+def keep_usb_off_campus(config):
+    """PCIe 模式只断开 USB 上的校园网连接；其他 SSID 不做任何改动。"""
+    if (not config.pcie_interface or config.interface != config.pcie_interface
+            or not config.usb_interface or not config.ssid):
+        return
+    fields = "GENERAL.CON-UUID,GENERAL.CON-PATH"
+    active = nmcli("-g", fields, "device", "show",
+                   config.usb_interface, check=False)
+    values = active.stdout.strip().splitlines()
+    if active.returncode or not values or values[0] == "--":
+        return
+    connection = values[0]
+    result = nmcli("-g", "802-11-wireless.ssid", "connection", "show", connection, check=False)
+    if result.returncode or result.stdout.strip() != config.ssid:
+        return
+    if len(values) != 2 or not values[1].startswith("/org/freedesktop/NetworkManager/ActiveConnection/"):
+        raise ValueError("无法确认 USB 校园网的活动连接，已停止切换")
+    # 只修改已确认属于校园网的连接，不设置设备级 autoconnect 或无线电开关。
+    log.info(f"断开 USB 的校园网连接（{config.usb_interface}）")
+    nmcli("connection", "modify", connection, "connection.autoconnect", "no")
+    # 重查当前 UUID，避免检查后用户切到其他 Wi-Fi 时误断开新连接。
+    current = nmcli("-g", fields, "device", "show", config.usb_interface)
+    if current.stdout.strip() == active.stdout.strip():
+        nmcli("--wait", "10", "connection", "down", "apath", values[1])
 
 
 def ensure_wifi(config):
@@ -157,7 +184,8 @@ def connect(session, config):
 def run():
     try:
         config = load_config()
-        with create_session(config.interface) as session:
+        with coordinate_clients(config), create_session(config.interface) as session:
+            keep_usb_off_campus(config)
             client = connect(session, config)
             if config.mode == "login":
                 if client:
@@ -174,6 +202,7 @@ def run():
                         client.heartbeat()
                         last_heartbeat = time.monotonic()
                     if now - last_check >= config.interval:
+                        keep_usb_off_campus(config)
                         ensure_wifi(config)
                         online, _ = probe(session, config)
                         last_check = time.monotonic()
