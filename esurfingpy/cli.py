@@ -17,6 +17,13 @@ def cli():
     pass
 
 
+@cli.command(name="campus")
+def cli_campus():
+    """读取 config.ini，连接 Linux 校园网并按配置保活。"""
+    from .campus import run
+    raise SystemExit(run())
+
+
 @cli.command(name="gui")
 @click.option('-h', '--hide-console', type=bool, default=True, show_default=True, help='隐藏控制台（仅适用于 Windows）')
 def cli_gui(hide_console):
@@ -34,7 +41,7 @@ def cli_gui(hide_console):
 @click.option('-c', '--wlan-acip', help='认证服务器IP')
 @click.option('-r', '--wlan-userip', help='登录设备IP')
 @click.option('-a', '--account', prompt='账号', help='账号')
-@click.option('-p', '--password', prompt='密码', help='密码')
+@click.option('-p', '--password', prompt='密码', hide_input=True, help='密码')
 @click.option('-v', '--verbose', type=bool, default=True, show_default=True, help='输出详细过程')
 def cli_login(esurfing_url, wlan_acip, wlan_userip, account, password, verbose):
     """登录校园网"""
@@ -50,7 +57,7 @@ def cli_login(esurfing_url, wlan_acip, wlan_userip, account, password, verbose):
 @click.option('-c', '--wlan-acip', prompt='认证服务器IP', help='认证服务器IP')
 @click.option('-r', '--wlan-userip', prompt='登录设备IP', help='登录设备IP')
 @click.option('-a', '--account', prompt='账号', help='账号')
-@click.option('-p', '--password', prompt='密码', help='密码')
+@click.option('-p', '--password', prompt='密码', hide_input=True, help='密码')
 @click.option('-s', '--signature', help='签名')
 @click.option('-v', '--verbose', type=bool, default=True, show_default=True, help='输出详细过程')
 def cli_logout(esurfing_url, wlan_acip, wlan_userip, account, password, signature, verbose):
@@ -71,7 +78,7 @@ def cli_logout(esurfing_url, wlan_acip, wlan_userip, account, password, signatur
 @click.option('-c', '--wlan-acip', help='认证服务器IP')
 @click.option('-r', '--wlan-userip', help='登录设备IP')
 @click.option('-a', '--account', prompt='账号', help='账号')
-@click.option('-p', '--password', prompt='密码', help='密码')
+@click.option('-p', '--password', prompt='密码', hide_input=True, help='密码')
 @click.option('-v', '--verbose', type=bool, default=True, show_default=True, help='输出详细过程')
 def cli_auto(mode, threshold, auto_stop, esurfing_url, wlan_acip, wlan_userip, account, password, verbose):
     """多种模式触发重登校园网"""

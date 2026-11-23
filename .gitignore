@@ -3,6 +3,13 @@
 
 # Env
 /venv/
+/.venv/
+/.tools/
+__pycache__/
+*.py[cod]
+/config.ini
+/work/
+/.esurfing-session-*
 
 # PyInstaller
 /build/

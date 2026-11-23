@@ -1,5 +1,72 @@
 # ESurfingPy-CLI
 
+## Linux 一键连接（五邑大学 / 广东天翼新版）
+
+本分支仓库：<https://github.com/admine-bit/ESufing>。保留原项目的旧版网页认证和 GUI，
+新增 Linux 的学校 BYOD 认证、天翼新版 CCTP 认证、指定网卡联网检测及心跳保活。
+
+本机绿联 USB 网卡为 `wlxec1ac353bc7c`，PCIe 无线网卡（RTL8852BE）为 `wlp6s0`，
+无线网络为 `WYUNET-STUDENT`。两张网卡都已分别通过认证、HTTPS 外网访问及心跳测试。
+首次登录会先通过学校网页认证，随后自动重连并获取电信网段地址，最后进行天翼认证。
+整个认证及外网检测过程均绑定配置的网卡，HTTP 请求不使用环境变量中的代理。
+
+本机已经配置账号。日常选择相应入口，无需额外参数：
+
+```bash
+cd /home/ad/ESurfingPy-CLI
+./start-usb.sh
+```
+
+使用 PCIe 无线网卡：
+
+```bash
+/home/ad/ESurfingPy-CLI/start-pcie.sh
+```
+
+`start.sh` 则使用 `[network]` 的默认接口。两个入口共用账号配置，
+按网卡分别保存 NetworkManager 连接及认证会话，也可同时运行。
+
+配置集中在项目根目录 `config.ini` 的 `[account]`、`[network]`、`[usb]`、`[pcie]` 和 `[runtime]`，
+每个可修改参数都有中文注释。更换账号、密码或网卡时只需编辑此文件。
+该文件已加入 `.gitignore`，本机权限设置为 `600`，不应提交到 Git。
+认证成功后会将会话缓存到同样被 Git 忽略、权限为 `600` 的 `.esurfing-session-网卡名.json`，
+供程序重启后恢复心跳；更换账号时先删除对应的会话缓存。
+
+新机器安装（Python 3.12 及以上、NetworkManager / `nmcli`）：
+
+```bash
+git clone git@github.com:admine-bit/ESufing.git ESurfingPy-CLI
+cd ESurfingPy-CLI
+cp config.example.ini config.ini
+chmod 600 config.ini
+# 编辑 config.ini，填写账号、密码、ssid 及对应网卡配置的 interface。
+./start-usb.sh
+```
+
+首次运行请先保留一条可联网的连接以下载依赖。脚本会创建 `.venv`，安装 Python 依赖，
+并构建本地新版加密组件。如果未安装 Go，会从 Go 官方下载固定版本工具链到 `.tools`，
+校验 SHA256 后使用；后续启动会复用已构建的组件，无需重复下载。
+如系统未提供 venv，请先安装对应的 `python3-venv` 包。
+加密实现引用 [xxmod/EsurfingGo](https://github.com/xxmod/EsurfingGo)，
+来源、固定版本和 MIT 许可证见 `third_party/esurfing-go/`。
+
+`mode = keepalive` 为推荐设置：保持终端运行，程序按服务器要求发送心跳，断线后重新认证；
+按 `Ctrl+C` 停止。`mode = login` 仅登录并检查外网后退出，停止心跳后可能被服务器断开。
+此启动方式不会安装开机自启服务。
+
+Wi-Fi 配置使用网卡的永久 MAC 地址，通过 NetworkManager 自动获取 IP 和 DNS。
+自动创建的校园网连接优先级低于已有连接，便于同时保留手机热点；
+需要整台机器使用校园网时，认证成功后在系统网络设置中断开手机热点即可。
+
+需要图形界面时，额外安装 GUI 依赖并明确启动：
+
+```bash
+.venv/bin/python -m pip install -r requirements-gui.txt
+.venv/bin/python main.py gui
+```
+
+下面保留原项目的旧版接口说明。对于服务端提示“拨号方式错误”的账号，请使用上述新版入口。
+
 ## 简介
 
 基于 Python 实现登录和登出广东天翼校园网网页认证的命令行工具。可以用该工具来快速登录或登出广东天翼校园网，
@@ -48,13 +115,14 @@
 
 ### 运行源码
 
-建议 Python 3.10
+建议 Python 3.12 或以上；Linux 用户优先使用上方的一键连接方式。
 
 ```shell
-git clone https://github.com/Pandaft/ESurfingPy-CLI.git
+git clone git@github.com:admine-bit/ESufing.git ESurfingPy-CLI
 cd ESurfingPy-CLI
-pip install -I -r requirements.txt  # 记得加上 -I 参数  
-python main.py
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements-gui.txt
+.venv/bin/python main.py gui
 ```
 
 <br />
@@ -106,7 +174,8 @@ Options:
   --help                      Show this message and exit.
 ```
 
-不带命令和参数直接运行则默认启动图形界面，也可通过加 `gui` 命令来启动。
+Linux 下无参数运行会读取 `config.ini` 连接校园网；其他系统无参数运行默认启动图形界面。
+也可通过 `gui` 命令明确启动图形界面。
 
 ### 登录
 
