@@ -99,7 +99,7 @@ def byod_login(session, config, response):
     params = parse_qs(urlsplit(url).query)
     values = {key: params.get(key, [""])[0] for key in ("wlannasid", "usermac", "userip", "userurl", "ssid")}
     if not values["usermac"] or not values["userip"]:
-        raise ValueError("学校认证入口缺少 USB 网卡的 MAC 或 IP")
+        raise ValueError("学校认证入口缺少指定网卡的 MAC 或 IP")
     init = session.get(config.byod_url + "/byod/byodrs/init", params=values, timeout=config.timeout)
     init.raise_for_status()
     data = init.json()
@@ -181,12 +181,24 @@ def connect(session, config):
     return client
 
 
+def connect_with_retry(session, config):
+    for attempt in range(1, config.startup_retries + 1):
+        try:
+            return connect(session, config)
+        except (requests.RequestException, subprocess.SubprocessError) as exc:
+            if attempt == config.startup_retries:
+                raise
+            log.warning(f"网络尚未就绪（{attempt}/{config.startup_retries}），"
+                        f"{config.startup_retry_interval:g} 秒后重试：{exc}")
+            time.sleep(config.startup_retry_interval)
+
+
 def run():
     try:
         config = load_config()
-        with coordinate_clients(config), create_session(config.interface) as session:
+        with coordinate_clients(config), create_session(config.interface, dns_servers=config.fallback_dns) as session:
             keep_usb_off_campus(config)
-            client = connect(session, config)
+            client = connect_with_retry(session, config)
             if config.mode == "login":
                 if client:
                     log.warning("当前为单次登录；天翼需要持续心跳，长期联网请将 mode 改为 keepalive")
@@ -207,7 +219,7 @@ def run():
                         online, _ = probe(session, config)
                         last_check = time.monotonic()
                         if not online:
-                            client = connect(session, config)
+                            client = connect_with_retry(session, config)
                             last_heartbeat = time.monotonic()
                         elif client is None:
                             client = CDCClient.restore(session, config)

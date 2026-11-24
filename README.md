@@ -9,6 +9,8 @@
 无线网络为 `WYUNET-STUDENT`。两张网卡都已分别通过认证、HTTPS 外网访问及心跳测试。
 首次登录会先通过学校网页认证，随后自动重连并获取电信网段地址，最后进行天翼认证。
 整个认证及外网检测过程均绑定配置的网卡，HTTP 请求不使用环境变量中的代理。
+DNS 查询也绑定同一网卡，先使用该网卡从 DHCP 获取的 DNS，再尝试 `[network] fallback_dns` 中的备用地址；
+不会修改系统 DNS、USB 其他网络的 DNS 或连接配置。HTTPS 仍按原域名校验证书。
 
 本机已经配置账号。日常选择相应入口，无需额外参数：
 
@@ -57,6 +59,10 @@ chmod 600 config.ini
 `mode = keepalive` 为推荐设置：保持终端运行，程序按服务器要求发送心跳，断线后重新认证；
 按 `Ctrl+C` 停止。`mode = login` 仅登录并检查外网后退出，停止心跳后可能被服务器断开。
 此启动方式不会安装开机自启服务。
+
+若刚连接 Wi-Fi 时出现 `Temporary failure in name resolution`，程序会自动重试网络初始化，
+默认最多 5 次，每次间隔 5 秒。需要调整时修改 `config.ini` 的 `[runtime] startup_retries`
+和 `startup_retry_interval`；备用 DNS 在 `[network] fallback_dns` 中调整。
 
 Wi-Fi 配置使用网卡的永久 MAC 地址，通过 NetworkManager 自动获取 IP 和 DNS。
 自动创建的校园网连接优先级低于已有连接，便于同时保留手机热点；

@@ -2,6 +2,7 @@
 
 from configparser import ConfigParser
 from dataclasses import dataclass, field
+import ipaddress
 import os
 from pathlib import Path
 
@@ -21,6 +22,9 @@ class Config:
     interval: float = 30
     usb_interface: str = ""
     pcie_interface: str = ""
+    fallback_dns: tuple = ("202.96.128.166", "202.96.128.86")
+    startup_retries: int = 5
+    startup_retry_interval: float = 5
 
 
 def load_config(path=CONFIG_FILE, profile=None):
@@ -46,6 +50,10 @@ def load_config(path=CONFIG_FILE, profile=None):
         interval=parser.getfloat("runtime", "interval", fallback=30),
         usb_interface=parser.get("usb", "interface", fallback="").strip(),
         pcie_interface=parser.get("pcie", "interface", fallback="").strip(),
+        fallback_dns=tuple(item.strip() for item in parser.get(
+            "network", "fallback_dns", fallback=",".join(Config.fallback_dns)).split(",") if item.strip()),
+        startup_retries=parser.getint("runtime", "startup_retries", fallback=5),
+        startup_retry_interval=parser.getfloat("runtime", "startup_retry_interval", fallback=5),
     )
     if not config.username or not config.password:
         raise ValueError("请在 config.ini 的 [account] 中填写 username 和 password")
@@ -55,4 +63,8 @@ def load_config(path=CONFIG_FILE, profile=None):
         raise ValueError("timeout 必须大于 0，interval 必须至少为 1 秒")
     if config.usb_interface and config.usb_interface == config.pcie_interface:
         raise ValueError("[usb] 和 [pcie] 必须配置不同的网卡")
+    for server in config.fallback_dns:
+        ipaddress.IPv4Address(server)
+    if config.startup_retries < 1 or config.startup_retry_interval <= 0:
+        raise ValueError("startup_retries 必须至少为 1，startup_retry_interval 必须大于 0")
     return config
