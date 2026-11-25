@@ -28,6 +28,17 @@ cd /home/ad/ESurfingPy-CLI
 /home/ad/ESurfingPy-CLI/start-pcie.sh
 ```
 
+PCIe 的 `keepalive` 模式现在由独立的用户后台服务托管。
+启动命令返回后，关闭终端或结束聊天仍会继续保活，进程意外退出后会自动重新启动。
+修改配置后再次运行 `start-pcie.sh` 会重启该服务并读取新配置。
+
+停止或查看 PCIe 后台状态：
+
+```bash
+/home/ad/ESurfingPy-CLI/stop-pcie.sh
+/home/ad/ESurfingPy-CLI/status-pcie.sh
+```
+
 `start.sh` 则使用 `[network]` 的默认接口。两个入口共用账号配置，
 按网卡分别保存 NetworkManager 连接及认证会话。
 启动 PCIe 入口会停止本项目已有的 USB 校园网保活，并断开 USB 上的 `ssid` 校园网连接。
@@ -59,9 +70,13 @@ chmod 600 config.ini
 加密实现引用 [xxmod/EsurfingGo](https://github.com/xxmod/EsurfingGo)，
 来源、固定版本和 MIT 许可证见 `third_party/esurfing-go/`。
 
-`mode = keepalive` 为推荐设置：保持终端运行，程序按服务器要求发送心跳，断线后重新认证；
-按 `Ctrl+C` 停止。`mode = login` 仅登录并检查外网后退出，停止心跳后可能被服务器断开。
-此启动方式不会安装开机自启服务。
+`mode = keepalive` 为推荐设置，程序按服务器要求发送心跳，断线后重新认证。
+PCIe 后台模式使用 `stop-pcie.sh` 停止；USB 和 `start.sh` 的前台模式需保持终端运行，按 `Ctrl+C` 停止。
+`mode = login` 仅在前台登录并检查外网后退出，停止心跳后可能被服务器断开。
+后台服务没有启用开机自启；注销或重启系统后，再运行一次 `start-pcie.sh` 即可。
+`keepalive` 模式在一轮网络重试失败后仍继续等待和重连；单次 `login` 模式则返回失败。
+运行日志保存在项目目录 `.esurfing-网卡名.log`，自动轮转并保持 `600` 权限；
+后续再出现中断时，可从该日志查看最后一次认证、心跳或重连错误。
 
 若刚连接 Wi-Fi 时出现 `Temporary failure in name resolution`，程序会自动重试网络初始化，
 默认最多 5 次，每次间隔 5 秒。需要调整时修改 `config.ini` 的 `[runtime] startup_retries`
@@ -69,8 +84,9 @@ chmod 600 config.ini
 如果探测服务或天翼入口 IP 发生变化，分别更新 `probe_ipv4` 或 `portal_ipv4`。
 
 Wi-Fi 配置使用网卡的永久 MAC 地址，通过 NetworkManager 自动获取 IP 和 DNS。
-自动创建的校园网连接优先级低于已有连接，便于同时保留手机热点；
-需要整台机器使用校园网时，认证成功后在系统网络设置中断开手机热点即可。
+认证成功后，将校园网的默认路由优先级设置为 `[network] route_metric`（默认 `100`），
+让 IPv4 上网优先通过校园网。其他网卡的连接及保存的配置保持原样，USB 仍可访问其局域网。
+如果希望其他网络优先作为互联网出口，可增大 `route_metric`。
 
 需要图形界面时，额外安装 GUI 依赖并明确启动：
 

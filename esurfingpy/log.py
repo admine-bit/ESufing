@@ -1,4 +1,6 @@
 import logging
+import os
+from logging.handlers import RotatingFileHandler
 
 from rich.logging import RichHandler
 
@@ -14,6 +16,25 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger("rich")
+
+
+class PrivateRotatingFileHandler(RotatingFileHandler):
+    def _open(self):
+        fd = os.open(self.baseFilename, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        os.fchmod(fd, 0o600)
+        return os.fdopen(fd, self.mode, encoding=self.encoding, errors=self.errors)
+
+
+def configure_file(path):
+    """保留最近的故障记录，当前文件和轮转文件均只允许当前用户读取。"""
+    root = logging.getLogger()
+    for handler in list(root.handlers):
+        if isinstance(handler, PrivateRotatingFileHandler):
+            root.removeHandler(handler)
+            handler.close()
+    handler = PrivateRotatingFileHandler(str(path), maxBytes=1024 * 1024, backupCount=2, encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    root.addHandler(handler)
 
 
 def debug(msg, *args, **kwargs):

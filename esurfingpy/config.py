@@ -27,6 +27,7 @@ class Config:
     startup_retry_interval: float = 5
     probe_ipv4: tuple = ("220.181.104.183", "202.69.4.32")
     portal_ipv4: str = "125.88.59.131"
+    route_metric: int = 100
 
     @property
     def host_fallbacks(self):
@@ -63,6 +64,7 @@ def load_config(path=CONFIG_FILE, profile=None):
         probe_ipv4=tuple(item.strip() for item in parser.get(
             "network", "probe_ipv4", fallback=",".join(Config.probe_ipv4)).split(",") if item.strip()),
         portal_ipv4=parser.get("network", "portal_ipv4", fallback=Config.portal_ipv4).strip(),
+        route_metric=parser.getint("network", "route_metric", fallback=100),
     )
     if not config.username or not config.password:
         raise ValueError("请在 config.ini 的 [account] 中填写 username 和 password")
@@ -78,4 +80,6 @@ def load_config(path=CONFIG_FILE, profile=None):
         raise ValueError("probe_ipv4 至少需要填写一个探测地址")
     if config.startup_retries < 1 or config.startup_retry_interval <= 0:
         raise ValueError("startup_retries 必须至少为 1，startup_retry_interval 必须大于 0")
+    if config.route_metric < 0:
+        raise ValueError("route_metric 必须大于或等于 0")
     return config

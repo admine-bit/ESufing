@@ -8,4 +8,7 @@ if ! .venv/bin/python -c 'import click, psutil, rich, rsa, requests, dns; import
     .venv/bin/python -m pip install -r requirements.txt
 fi
 .venv/bin/python build_crypto.py
+if [[ "${ESURFING_PREPARE_ONLY:-0}" == "1" ]]; then
+    exit 0
+fi
 exec .venv/bin/python main.py "$@"

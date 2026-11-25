@@ -1,6 +1,7 @@
 """Linux 双阶段校园网认证入口。"""
 
 import base64
+import configparser
 import html
 import re
 import subprocess
@@ -11,7 +12,7 @@ import requests
 
 from . import log
 from .cdc import CAPTIVE_URL, USER_AGENT, CDCClient, portal_config
-from .config import load_config
+from .config import ROOT, load_config
 from .http import create_session
 from .processes import coordinate_clients
 
@@ -69,6 +70,24 @@ def ensure_wifi(config):
         nmcli("connection", "modify", profile, "connection.interface-name", config.interface)
     log.info(f"正在连接 {config.ssid}（{config.interface}）")
     nmcli("--wait", "30", "connection", "up", profile, "ifname", config.interface)
+
+
+def prioritize_campus(config):
+    """认证后只调整校园网连接，让普通应用使用校园网作为默认出口。"""
+    if not config.ssid or not config.interface:
+        return
+    active = nmcli("-g", "GENERAL.CON-UUID", "device", "show", config.interface).stdout.strip()
+    if not active or active == "--":
+        raise requests.ConnectionError("校园网连接已断开，需要重新连接")
+    ssid = nmcli("-g", "802-11-wireless.ssid", "connection", "show", active).stdout.strip()
+    if ssid != config.ssid:
+        raise requests.ConnectionError("指定网卡已切换到其他 Wi-Fi，需要重新连接校园网")
+    metric = nmcli("-g", "ipv4.route-metric", "connection", "show", active).stdout.strip()
+    if metric == str(config.route_metric):
+        return
+    nmcli("connection", "modify", "uuid", active, "ipv4.route-metric", str(config.route_metric))
+    nmcli("device", "reapply", config.interface)
+    log.info(f"校园网默认路由优先级已设为 {config.route_metric}（{config.interface}）")
 
 
 def redirect_url(response):
@@ -179,6 +198,7 @@ def connect(session, config):
     ensure_wifi(config)
     online, response = probe(session, config)
     if online:
+        prioritize_campus(config)
         log.info(f"校园网已联网（{config.interface or '默认接口'}）")
         client = CDCClient.restore(session, config)
         if client:
@@ -200,6 +220,7 @@ def connect(session, config):
         else:
             raise ValueError("学校认证已完成，但网卡尚未切换到电信网段，请稍后重试")
         if online:
+            prioritize_campus(config)
             return None
     portal = portal_config(response.text)
     if portal is None:
@@ -210,6 +231,7 @@ def connect(session, config):
     online, _ = probe(session, config)
     if not online:
         raise ValueError("天翼已返回登录凭据，但指定网卡尚未通过外网检测")
+    prioritize_campus(config)
     log.info(f"校园网认证成功，外网检测通过（{config.interface or '默认接口'}）")
     return client
 
@@ -226,18 +248,30 @@ def connect_with_retry(session, config):
             time.sleep(config.startup_retry_interval)
 
 
+def connect_until_ready(session, config):
+    while True:
+        try:
+            return connect_with_retry(session, config)
+        except (requests.RequestException, subprocess.SubprocessError) as exc:
+            if config.mode != "keepalive":
+                raise
+            log.warning(f"本轮网络连接失败，程序保持运行，{config.interval:g} 秒后重试：{exc}")
+            time.sleep(config.interval)
+
+
 def run():
     try:
         config = load_config()
+        log.configure_file(ROOT / f".esurfing-{config.interface or 'default'}.log")
         with coordinate_clients(config), create_session(
                 config.interface, dns_servers=config.fallback_dns, host_fallbacks=config.host_fallbacks) as session:
             keep_usb_off_campus(config)
-            client = connect_with_retry(session, config)
+            client = connect_until_ready(session, config)
             if config.mode == "login":
                 if client:
                     log.warning("当前为单次登录；天翼需要持续心跳，长期联网请将 mode 改为 keepalive")
                 return 0
-            log.info("正在保活，按 Ctrl+C 停止")
+            log.info("正在保活")
             last_heartbeat = time.monotonic()
             last_check = time.monotonic()
             while True:
@@ -253,7 +287,7 @@ def run():
                         online, _ = probe(session, config)
                         last_check = time.monotonic()
                         if not online:
-                            client = connect_with_retry(session, config)
+                            client = connect_until_ready(session, config)
                             last_heartbeat = time.monotonic()
                         elif client is None:
                             client = CDCClient.restore(session, config)
@@ -262,9 +296,14 @@ def run():
                     log.warning(f"连接中断：{exc}；稍后重新认证")
                     client = None
                     time.sleep(config.interval)
+                    client = connect_until_ready(session, config)
+                    last_heartbeat = last_check = time.monotonic()
     except KeyboardInterrupt:
         log.info("已停止保活")
         return 0
-    except (ValueError, OSError, requests.RequestException, subprocess.SubprocessError) as exc:
+    except (ValueError, configparser.Error) as exc:
+        log.error(str(exc))
+        return 2
+    except (OSError, requests.RequestException, subprocess.SubprocessError) as exc:
         log.error(str(exc))
         return 1

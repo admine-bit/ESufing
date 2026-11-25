@@ -11,6 +11,7 @@ __pycache__/
 /work/
 /.esurfing-session-*
 /.esurfing-*.lock
+/.esurfing-*.log*
 
 # PyInstaller
 /build/
