@@ -13,12 +13,15 @@ import dns.rcode
 import dns.rdatatype
 from psutil import net_if_addrs
 
+from . import log
+
 
 class InterfaceResolver:
-    def __init__(self, interface, fallback_servers=()):
+    def __init__(self, interface, fallback_servers=(), host_fallbacks=None):
         self.interface = interface
         self.fallback_servers = tuple(fallback_servers)
         self.cache = {}
+        self.host_fallbacks = host_fallbacks or {}
 
     def network(self):
         addresses = net_if_addrs().get(self.interface, [])
@@ -72,5 +75,9 @@ class InterfaceResolver:
                     return addresses
             except (OSError, dns.exception.DNSException):
                 continue
+        addresses = self.host_fallbacks.get(hostname.lower().rstrip("."), ())
+        if addresses:
+            log.warning(f"{hostname} 的 DNS 暂不可用，使用配置的认证入口 IP")
+            return tuple(addresses)
         raise socket.gaierror(socket.EAI_AGAIN,
                               f"网卡 {self.interface} 的 DNS 暂不可用，无法解析 {hostname}；将重试")

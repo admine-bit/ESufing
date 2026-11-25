@@ -25,6 +25,12 @@ class Config:
     fallback_dns: tuple = ("202.96.128.166", "202.96.128.86")
     startup_retries: int = 5
     startup_retry_interval: float = 5
+    probe_ipv4: tuple = ("220.181.104.183", "202.69.4.32")
+    portal_ipv4: str = "125.88.59.131"
+
+    @property
+    def host_fallbacks(self):
+        return {"enet.10000.gd.cn": (self.portal_ipv4,)}
 
 
 def load_config(path=CONFIG_FILE, profile=None):
@@ -54,6 +60,9 @@ def load_config(path=CONFIG_FILE, profile=None):
             "network", "fallback_dns", fallback=",".join(Config.fallback_dns)).split(",") if item.strip()),
         startup_retries=parser.getint("runtime", "startup_retries", fallback=5),
         startup_retry_interval=parser.getfloat("runtime", "startup_retry_interval", fallback=5),
+        probe_ipv4=tuple(item.strip() for item in parser.get(
+            "network", "probe_ipv4", fallback=",".join(Config.probe_ipv4)).split(",") if item.strip()),
+        portal_ipv4=parser.get("network", "portal_ipv4", fallback=Config.portal_ipv4).strip(),
     )
     if not config.username or not config.password:
         raise ValueError("请在 config.ini 的 [account] 中填写 username 和 password")
@@ -63,8 +72,10 @@ def load_config(path=CONFIG_FILE, profile=None):
         raise ValueError("timeout 必须大于 0，interval 必须至少为 1 秒")
     if config.usb_interface and config.usb_interface == config.pcie_interface:
         raise ValueError("[usb] 和 [pcie] 必须配置不同的网卡")
-    for server in config.fallback_dns:
+    for server in (*config.fallback_dns, *config.probe_ipv4, config.portal_ipv4):
         ipaddress.IPv4Address(server)
+    if not config.probe_ipv4:
+        raise ValueError("probe_ipv4 至少需要填写一个探测地址")
     if config.startup_retries < 1 or config.startup_retry_interval <= 0:
         raise ValueError("startup_retries 必须至少为 1，startup_retry_interval 必须大于 0")
     return config

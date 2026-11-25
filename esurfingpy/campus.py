@@ -5,7 +5,7 @@ import html
 import re
 import subprocess
 import time
-from urllib.parse import parse_qs, urljoin, urlsplit
+from urllib.parse import parse_qs, urljoin, urlsplit, urlunsplit
 
 import requests
 
@@ -135,11 +135,44 @@ def byod_login(session, config, response):
 
 
 def probe(session, config):
-    response = session.get(CAPTIVE_URL, headers={"User-Agent": USER_AGENT}, timeout=config.timeout)
-    response.raise_for_status()
+    try:
+        response = session.get(CAPTIVE_URL, headers={"User-Agent": USER_AGENT}, timeout=config.timeout)
+        response.raise_for_status()
+    except requests.RequestException:
+        if getattr(session, "_campus_ip_probe_active", False) is not True:
+            log.warning("域名探测失败，改用 IP 直连探测校园网")
+            session._campus_ip_probe_active = True
+        return probe_by_ip(session, config)
+    session._campus_ip_probe_active = False
     # 只有原地址直接返回空的 204 才认定外网正常；认证页的 200 不算成功。
     online = response.status_code == 204 and response.url == CAPTIVE_URL and not response.content
     return online, response
+
+
+def probe_by_ip(session, config):
+    parsed = urlsplit(CAPTIVE_URL)
+    last_error = None
+    for address in config.probe_ipv4:
+        host = address if parsed.port is None else f"{address}:{parsed.port}"
+        url = urlunsplit(parsed._replace(netloc=host))
+        try:
+            response = session.get(url, headers={"User-Agent": USER_AGENT, "Host": parsed.netloc},
+                                   timeout=config.timeout, allow_redirects=False)
+            response.raise_for_status()
+            if response.status_code == 204 and response.url == url and not response.content:
+                return True, response
+            if response.is_redirect:
+                target = urljoin(url, response.headers["Location"])
+                # 创建新请求，让认证入口使用自己的 Host，不能沿用探测站点的 Host。
+                response = session.get(target, headers={"User-Agent": USER_AGENT}, timeout=config.timeout)
+                response.raise_for_status()
+                return False, response
+            if portal_config(response.text) is not None or "/byod/" in redirect_url(response):
+                return False, response
+            last_error = requests.ConnectionError("IP 探测未返回 204 或有效的校园网认证入口")
+        except requests.RequestException as exc:
+            last_error = exc
+    raise requests.ConnectionError("DNS 与 IP 直连探测均未成功，请检查校园网链路") from last_error
 
 
 def connect(session, config):
@@ -196,7 +229,8 @@ def connect_with_retry(session, config):
 def run():
     try:
         config = load_config()
-        with coordinate_clients(config), create_session(config.interface, dns_servers=config.fallback_dns) as session:
+        with coordinate_clients(config), create_session(
+                config.interface, dns_servers=config.fallback_dns, host_fallbacks=config.host_fallbacks) as session:
             keep_usb_off_campus(config)
             client = connect_with_retry(session, config)
             if config.mode == "login":

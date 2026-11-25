@@ -52,12 +52,12 @@ def interface_pools(resolver):
 
 
 class InterfaceAdapter(HTTPAdapter):
-    def __init__(self, interface, dns_servers=()):
+    def __init__(self, interface, dns_servers=(), host_fallbacks=None):
         if not sys.platform.startswith("linux"):
             raise ValueError("指定 interface 目前仅支持 Linux")
         socket.if_nametoindex(interface)
         self.interface = interface
-        self.resolver = InterfaceResolver(interface, dns_servers)
+        self.resolver = InterfaceResolver(interface, dns_servers, host_fallbacks)
         super().__init__()
 
     def init_poolmanager(self, *args, **kwargs):
@@ -68,11 +68,11 @@ class InterfaceAdapter(HTTPAdapter):
         self.poolmanager.pool_classes_by_scheme = interface_pools(self.resolver)
 
 
-def create_session(interface="", dns_servers=()):
+def create_session(interface="", dns_servers=(), host_fallbacks=None):
     session = requests.Session()
     session.trust_env = False
     if interface:
-        adapter = InterfaceAdapter(interface, dns_servers)
+        adapter = InterfaceAdapter(interface, dns_servers, host_fallbacks)
         session.mount("http://", adapter)
         session.mount("https://", adapter)
     return session

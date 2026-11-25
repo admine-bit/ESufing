@@ -11,6 +11,9 @@
 整个认证及外网检测过程均绑定配置的网卡，HTTP 请求不使用环境变量中的代理。
 DNS 查询也绑定同一网卡，先使用该网卡从 DHCP 获取的 DNS，再尝试 `[network] fallback_dns` 中的备用地址；
 不会修改系统 DNS、USB 其他网络的 DNS 或连接配置。HTTPS 仍按原域名校验证书。
+当所有 DNS 都不可用时，改用 `[network] probe_ipv4` 中的地址直接访问探测端点，
+并保留正确的 HTTP Host。认证域名也无法解析时，使用 `portal_ipv4` 直连天翼入口。
+这条路径不依赖 DNS；普通网页和认证页面的 HTTP 200 不会被误判为已联网。
 
 本机已经配置账号。日常选择相应入口，无需额外参数：
 
@@ -63,6 +66,7 @@ chmod 600 config.ini
 若刚连接 Wi-Fi 时出现 `Temporary failure in name resolution`，程序会自动重试网络初始化，
 默认最多 5 次，每次间隔 5 秒。需要调整时修改 `config.ini` 的 `[runtime] startup_retries`
 和 `startup_retry_interval`；备用 DNS 在 `[network] fallback_dns` 中调整。
+如果探测服务或天翼入口 IP 发生变化，分别更新 `probe_ipv4` 或 `portal_ipv4`。
 
 Wi-Fi 配置使用网卡的永久 MAC 地址，通过 NetworkManager 自动获取 IP 和 DNS。
 自动创建的校园网连接优先级低于已有连接，便于同时保留手机热点；
